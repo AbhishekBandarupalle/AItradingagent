@@ -55,7 +55,7 @@ Using Ollama:
 ollama pull mistral
 ollama run mistral
 ```
-Using a Docker Container:
+Using a Docker Container for MCP:
 ```bash
 docker run -d -p 11434:11434 your-mcp-server
 ```
