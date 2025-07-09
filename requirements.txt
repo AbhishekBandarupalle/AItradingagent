@@ -1,2 +1,6 @@
 requests
 matplotlib
+yfinance
+dash
+plotly
+psutil

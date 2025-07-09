@@ -3,7 +3,7 @@ import requests
 import json
 
 class MCPClient:
-    def __init__(self, mcp_url="http://localhost:11434/mcp"):
+    def __init__(self, mcp_url="http://localhost:11534/mcp"):
         self.mcp_url = mcp_url
 
     def send(self, prompt):
