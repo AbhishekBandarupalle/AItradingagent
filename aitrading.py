@@ -27,6 +27,22 @@ PROCESS_NAMES = [
 
 
 def start_all():
+    # Remove the logging directory if it exists to clear all previous cache/logs
+    if os.path.exists(LOG_DIR):
+        import shutil
+        import logging
+        # Close all logging handlers
+        for handler in logging.root.handlers[:]:
+            try:
+                handler.close()
+            except Exception as e:
+                print(f"Error closing handler: {e}")
+            logging.root.removeHandler(handler)
+        # Try to delete the directory
+        try:
+            shutil.rmtree(LOG_DIR)
+        except Exception as e:
+            print(f"Failed to delete {LOG_DIR}: {e}")
     os.makedirs(LOG_DIR, exist_ok=True)
     procs = [
         (['python3', MCP_SERVER], MCP_LOG),
@@ -77,4 +93,4 @@ def main():
         stop_all()
 
 if __name__ == '__main__':
-    main() 
+    main()

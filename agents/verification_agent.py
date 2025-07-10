@@ -100,6 +100,17 @@ class TradeVerificationAgent:
         else:
             print("No new trades to verify.")
 
+    def run_continuous(self, interval_minutes=10):
+        print(f"Starting continuous verification agent loop. Interval: {interval_minutes} minutes.")
+        try:
+            while True:
+                self.run()
+                print(f"Sleeping for {interval_minutes} minutes before next verification.")
+                time.sleep(interval_minutes * 60)
+        except KeyboardInterrupt:
+            print("Continuous verification agent loop stopped by user.")
+
 if __name__ == "__main__":
+    import time
     agent = TradeVerificationAgent()
-    agent.run()
+    agent.run_continuous(interval_minutes=2)

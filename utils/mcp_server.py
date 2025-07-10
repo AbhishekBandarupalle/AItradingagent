@@ -98,32 +98,33 @@ def view_trades():
     sorted_ids = sorted(transactions.keys(), key=lambda x: int(x))
     # Compute total and delta per transaction
     transaction_summaries = []
-    prev_total = None
+    prev_portfolio_value = None
     for tid in sorted_ids:
         batch = transactions[tid]
         t_time = batch[0]['time']
         t_date = batch[0]['date']
-        total = sum(trade['amount'] for trade in batch)
-        delta = total - prev_total if prev_total is not None else None
+        # Use portfolio_value from the first trade in the batch if available
+        portfolio_value = batch[0].get('portfolio_value')
+        delta = portfolio_value - prev_portfolio_value if (prev_portfolio_value is not None and portfolio_value is not None) else None
         transaction_summaries.append({
             'transaction_id': tid,
             'time': t_time,
             'date': t_date,
-            'total': total,
+            'portfolio_value': portfolio_value,
             'delta': delta,
             'trades': batch
         })
-        prev_total = total
-    latest_total = transaction_summaries[-1]['total'] if transaction_summaries else 0
+        prev_portfolio_value = portfolio_value
+    latest_portfolio_value = transaction_summaries[-1]['portfolio_value'] if transaction_summaries and transaction_summaries[-1]['portfolio_value'] is not None else 0
     html = '''
     <html>
     <head><title>Trade Log</title></head>
     <body>
     <h2>Trade Log</h2>
     {% if transaction_summaries %}
-    <h3>Current Portfolio Value: ${{ '%.2f'|format(latest_total) }}</h3>
+    <h3>Current Portfolio Value: ${{ '%.2f'|format(latest_portfolio_value) }}</h3>
     {% for tx in transaction_summaries %}
-    <h4>Transaction {{ tx.transaction_id }} at {{ tx.time }} on {{ tx.date }} | Total: ${{ '%.2f'|format(tx.total) }}{% if tx.delta is not none %} ({{ '+' if tx.delta >= 0 else '' }}{{ '%.2f'|format(tx.delta) }}){% endif %}</h4>
+    <h4>Transaction {{ tx.transaction_id }} at {{ tx.time }} on {{ tx.date }} | Portfolio Value: ${{ '%.2f'|format(tx.portfolio_value) }}{% if tx.delta is not none %} ({{ '+' if tx.delta >= 0 else '' }}{{ '%.2f'|format(tx.delta) }}){% endif %}</h4>
     <table border="1" cellpadding="5" cellspacing="0">
         <tr>
             <th>Stock Symbol</th>
@@ -148,7 +149,7 @@ def view_trades():
     </body>
     </html>
     '''
-    return render_template_string(html, transaction_summaries=transaction_summaries, latest_total=latest_total)
+    return render_template_string(html, transaction_summaries=transaction_summaries, latest_portfolio_value=latest_portfolio_value)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=11534) 

@@ -25,7 +25,7 @@ def load_trades():
     # Group by transaction_id for portfolio value over time
     df['transaction_id'] = df['transaction_id'].astype(str)
     df['total'] = df.groupby('transaction_id')['amount'].transform('sum')
-    df['datetime'] = df['date'] + ' ' + df['time']
+    df['datetime'] = pd.to_datetime(df['date'] + ' ' + df['time'], format='%d-%m-%y %H:%M:%S')
     return df
 
 def get_portfolio_value_trace(df):
@@ -125,6 +125,34 @@ def get_buy_sell_table(df):
         page_size=20,
     )
 
+# Add a function to get the current portfolio table
+
+def get_current_portfolio_table(df):
+    # Use the latest transaction to get current holdings
+    latest_tx = df[df['transaction_id'] == df['transaction_id'].max()]
+    # Only show symbols with shares held > 0
+    current_holdings = latest_tx[latest_tx['shares_held'] > 0].copy()
+    current_holdings['holding_value'] = current_holdings['shares_held'] * current_holdings['current_price']
+    return dash_table.DataTable(
+        columns=[
+            {"name": "Symbol", "id": "symbol"},
+            {"name": "Shares Held", "id": "shares_held"},
+            {"name": "Current Price", "id": "current_price"},
+            {"name": "Holding Value ($)", "id": "holding_value"},
+            {"name": "Allocation (%)", "id": "allocation"},
+        ],
+        data=[{
+            "symbol": row['symbol'],
+            "shares_held": f"{row['shares_held']:.4f}",
+            "current_price": row['current_price'] if row['current_price'] is not None else 'N/A',
+            "holding_value": f"{row['holding_value']:.2f}" if row['current_price'] is not None else 'N/A',
+            "allocation": f"{row['allocation']*100:.1f}"
+        } for _, row in current_holdings.iterrows()],
+        style_table={'overflowX': 'auto', 'backgroundColor': dark_card},
+        style_cell={'textAlign': 'center', 'backgroundColor': dark_card, 'color': light_text},
+        style_header={'fontWeight': 'bold', 'backgroundColor': accent, 'color': dark_bg},
+    )
+
 app = dash.Dash(__name__)
 app.title = "AI Trading Dashboard"
 
@@ -157,7 +185,9 @@ app.layout = html.Div([
             'fontSize': '1.1em',
         }
     ),
-    html.H2("Latest Trades", style={'color': accent}),
+    html.H2("Current Portfolio", style={'color': accent}),
+    html.Div(id='portfolio-table'),
+    html.H2("Recent Transaction", style={'color': accent, 'marginTop': '30px'}),
     html.Div(id='trades-table'),
 ], style={'backgroundColor': dark_bg, 'minHeight': '100vh', 'padding': '20px'})
 
@@ -171,6 +201,7 @@ def serve_transactions():
 @app.callback(
     [Output('portfolio-value', 'figure'),
      Output('allocation-pie', 'figure'),
+     Output('portfolio-table', 'children'),
      Output('trades-table', 'children'),
      Output('portfolio-value-text', 'children')],
     [Input('interval', 'n_intervals')]
@@ -178,7 +209,7 @@ def serve_transactions():
 def update_dashboard(n):
     df = load_trades()
     if df.empty:
-        return go.Figure(), go.Figure(), html.P("No trades found.", style={'color': light_text}), "Portfolio Value: $0.00 | Cash: $0.00"
+        return go.Figure(), go.Figure(), html.P("No trades found.", style={'color': light_text}), html.P("No trades found.", style={'color': light_text}), "Portfolio Value: $0.00 | Cash: $0.00"
     # Portfolio value line chart
     value_fig = go.Figure([get_portfolio_value_trace(df)])
     value_fig.update_layout(
@@ -202,7 +233,9 @@ def update_dashboard(n):
         title_font_color=accent,
         legend=dict(font=dict(color=light_text)),
     )
-    # Trades table
+    # Current portfolio table
+    portfolio_table = get_current_portfolio_table(df)
+    # Latest trades table (as before)
     latest_tx = df[df['transaction_id'] == df['transaction_id'].max()]
     trades_table = dash_table.DataTable(
         columns=[
@@ -222,12 +255,11 @@ def update_dashboard(n):
         style_header={'fontWeight': 'bold', 'backgroundColor': accent, 'color': dark_bg},
     )
     # Portfolio value and cash as text
-    # Get the latest trade (by transaction_id and then by index)
     latest_trade = df[df['transaction_id'] == df['transaction_id'].max()].iloc[-1]
     portfolio_value = latest_trade.get('portfolio_value', 0)
     cash = latest_trade.get('final_cash', 0)
     value_text = f"Portfolio Value: ${portfolio_value:,.2f} | Cash: ${cash:,.2f}"
-    return value_fig, pie_fig, trades_table, value_text
+    return value_fig, pie_fig, portfolio_table, trades_table, value_text
 
 if __name__ == '__main__':
     app.run(port=8050) 
