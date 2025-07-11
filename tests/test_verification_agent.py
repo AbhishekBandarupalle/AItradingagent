@@ -1,9 +1,12 @@
 import unittest
 from unittest.mock import patch, MagicMock
-from trade_verification_agent import TradeVerificationAgent
+import sys
+import os
+sys.path.insert(0, os.path.abspath('..'))
+from agents.verification_agent import TradeVerificationAgent
 
 class TestTradeVerificationAgent(unittest.TestCase):
-    @patch('trade_verification_agent.MCPClient')
+    @patch('agents.verification_agent.MCPClient')
     def test_format_email_body(self, MockMCPClient):
         agent = TradeVerificationAgent()
         trades = [

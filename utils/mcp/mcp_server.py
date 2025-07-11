@@ -8,7 +8,7 @@ import json
 import csv
 import re
 from collections import defaultdict
-from utils.db_utils import TradeDatabase
+from utils import TradeDatabase
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)

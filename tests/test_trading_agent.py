@@ -1,9 +1,12 @@
 import unittest
 from unittest.mock import patch, MagicMock
-from smart_m1_trading_agent_llm import SmartM1TradingAgent
+import sys
+import os
+sys.path.insert(0, os.path.abspath('..'))
+from agents.trading_agent import SmartM1TradingAgent
 
 class TestSmartM1TradingAgent(unittest.TestCase):
-    @patch('smart_m1_trading_agent_llm.MCPClient')
+    @patch('agents.trading_agent.MCPClient')
     def test_generate_portfolio_with_llm(self, MockMCPClient):
         mock_mcp = MockMCPClient.return_value
         mock_mcp.send.return_value = '{"AAPL": 0.6, "MSFT": 0.4}'

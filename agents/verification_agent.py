@@ -7,7 +7,7 @@ import sys
 from datetime import datetime
 from collections import defaultdict
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from utils.mcp_client import MCPClient
+from utils import MCPClient
 
 log_dir = 'logging'
 os.makedirs(log_dir, exist_ok=True)

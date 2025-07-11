@@ -1,9 +1,12 @@
 import unittest
 from unittest.mock import patch, MagicMock
-from mcp_client import MCPClient
+import sys
+import os
+sys.path.insert(0, os.path.abspath('..'))
+from utils import MCPClient
 
 class TestMCPClient(unittest.TestCase):
-    @patch('mcp_client.requests.post')
+    @patch('utils.mcp.mcp_client.requests.post')
     def test_send_success(self, mock_post):
         mock_response = MagicMock()
         mock_response.json.return_value = {'result': 'ok'}
@@ -13,7 +16,7 @@ class TestMCPClient(unittest.TestCase):
         result = client.send('PROMPT')
         self.assertEqual(result, 'ok')
 
-    @patch('mcp_client.requests.post')
+    @patch('utils.mcp.mcp_client.requests.post')
     def test_send_failure(self, mock_post):
         mock_post.side_effect = Exception('fail')
         client = MCPClient('http://fake-url')

@@ -1,0 +1,56 @@
+{
+  "name": "ai-trading-dashboard",
+  "version": "1.0.0",
+  "description": "Modern AI Trading Dashboard",
+  "main": "server.js",
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "server": "node server.js",
+    "dev": "concurrently \"npm run server\" \"npm start\"",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-scripts": "5.0.1",
+    "axios": "^1.6.0",
+    "recharts": "^2.8.0",
+    "styled-components": "^6.1.0",
+    "react-router-dom": "^6.18.0",
+    "lucide-react": "^0.292.0",
+    "framer-motion": "^10.16.0",
+    "date-fns": "^2.30.0",
+    "socket.io-client": "^4.7.0",
+    "express": "^4.19.2",
+    "cors": "^2.8.5",
+    "socket.io": "^4.7.0",
+    "concurrently": "^8.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "typescript": "^4.9.0"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "overrides": {
+    "nth-check": "^2.1.1",
+    "postcss": "^8.4.31",
+    "svgo": "^3.0.0",
+    "webpack-dev-server": "^4.15.1",
+    "@pmmmwh/react-refresh-webpack-plugin": "^0.5.11"
+  },
+  "proxy": "http://localhost:3001"
+} 

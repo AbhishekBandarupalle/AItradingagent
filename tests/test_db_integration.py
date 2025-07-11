@@ -11,8 +11,7 @@ from datetime import datetime
 # Add the project root to the path
 sys.path.insert(0, os.path.abspath('..'))
 
-from utils.db_utils import TradeDatabase
-from utils.mcp_client import MCPClient
+from utils import TradeDatabase, MCPClient
 
 def test_database_direct():
     """Test direct database connectivity."""
@@ -134,7 +133,7 @@ def main():
     else:
         print("⚠️  Some tests failed. Check the setup:")
         print("  - Make sure MongoDB is running (default: localhost:27017)")
-        print("  - Make sure MCP server is running (python utils/mcp_server.py)")
+        print("  - Make sure MCP server is running (python utils/mcp/mcp_server.py)")
         print("  - Make sure LLM server is running (e.g., Ollama)")
         return 1
 
