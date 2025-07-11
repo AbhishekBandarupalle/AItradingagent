@@ -26,6 +26,19 @@ PROCESS_NAMES = [
 ]
 
 
+def ensure_node_deps():
+    """Install Node dependencies for the dashboard if missing."""
+    services_dir = os.path.join(os.path.abspath('.'), 'services')
+    package_json = os.path.join(services_dir, 'package.json')
+    if not os.path.exists(package_json):
+        subprocess.run(['npm', 'init', '-y'], cwd=services_dir,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    express_dir = os.path.join(services_dir, 'node_modules', 'express')
+    if not os.path.exists(express_dir):
+        print('Installing express...')
+        subprocess.run(['npm', 'install', 'express'], cwd=services_dir)
+
+
 def start_all():
     # Remove the logging directory if it exists to clear all previous cache/logs
     if os.path.exists(LOG_DIR):
@@ -44,6 +57,7 @@ def start_all():
         except Exception as e:
             print(f"Failed to delete {LOG_DIR}: {e}")
     os.makedirs(LOG_DIR, exist_ok=True)
+    ensure_node_deps()
     procs = [
         (['python3', MCP_SERVER], MCP_LOG),
         (['python3', TRADING_AGENT], TRADING_LOG),

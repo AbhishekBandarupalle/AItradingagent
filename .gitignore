@@ -73,4 +73,6 @@ examples/.env.example
 examples/.env
 
 # VS Code
-.vscode/ 
+.vscode/
+node_modules/
+services/node_modules/
