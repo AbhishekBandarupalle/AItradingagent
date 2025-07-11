@@ -3,14 +3,16 @@
 Test script to verify MongoDB database setup and MCP server integration.
 """
 
-import sys
-import os
+# Standard library imports
 import json
+import os
+import sys
 from datetime import datetime
 
 # Add the project root to the path
 sys.path.insert(0, os.path.abspath('..'))
 
+# Local imports
 from utils import TradeDatabase, MCPClient
 
 def test_database_direct():

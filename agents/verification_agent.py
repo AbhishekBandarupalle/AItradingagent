@@ -1,11 +1,17 @@
-import requests
-import smtplib
-from email.message import EmailMessage
+# Standard library imports
 import json
 import os
+import smtplib
 import sys
-from datetime import datetime
 from collections import defaultdict
+from datetime import datetime
+from email.message import EmailMessage
+
+# Third-party imports
+import requests
+
+# Local imports
+# Add project root to Python path if needed
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from utils import MCPClient
 

@@ -186,6 +186,163 @@ def print_manual_nodejs_instructions(system):
         print("   • Winget: winget install OpenJS.NodeJS")
         print("   • Scoop: scoop install nodejs")
 
+def check_mongodb_installed():
+    """Check if MongoDB is installed and running"""
+    try:
+        # Check if mongod is installed
+        subprocess.run(['mongod', '--version'], capture_output=True, check=True)
+        
+        # Check if MongoDB is running by trying to connect
+        try:
+            result = subprocess.run(['mongosh', '--eval', 'db.runCommand("ping")'], 
+                                  capture_output=True, check=True, text=True, timeout=5)
+            if 'ok' in result.stdout.lower():
+                print("✅ MongoDB is installed and running")
+                return True
+            else:
+                print("⚠️  MongoDB is installed but not running")
+                return False
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            print("⚠️  MongoDB is installed but not running or not accessible")
+            return False
+            
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        print("❌ MongoDB is not installed")
+        return False
+
+def install_mongodb():
+    """Attempt to install MongoDB automatically"""
+    print("🔧 Attempting to install MongoDB...")
+    
+    system = get_system_info()
+    package_managers = check_package_manager()
+    
+    # macOS installation
+    if system == 'macos':
+        if 'brew' in package_managers:
+            print("📦 Installing MongoDB via Homebrew...")
+            try:
+                subprocess.run(['brew', 'tap', 'mongodb/brew'], check=True)
+                subprocess.run(['brew', 'install', 'mongodb-community'], check=True)
+                print("✅ MongoDB installed successfully via Homebrew")
+                
+                # Start MongoDB service
+                print("🚀 Starting MongoDB service...")
+                subprocess.run(['brew', 'services', 'start', 'mongodb-community'], check=True)
+                print("✅ MongoDB service started")
+                return True
+            except subprocess.CalledProcessError as e:
+                print(f"❌ Failed to install MongoDB via Homebrew: {e}")
+        else:
+            print("⚠️  Homebrew not found. Please install Homebrew first or use the official installer.")
+    
+    # Linux installation
+    elif system == 'linux':
+        if 'apt' in package_managers:
+            print("📦 Installing MongoDB via APT...")
+            try:
+                # Import MongoDB GPG key
+                subprocess.run(['wget', '-qO', '-', 'https://www.mongodb.org/static/pgp/server-7.0.asc'], 
+                             capture_output=True, check=True)
+                subprocess.run(['sudo', 'apt-key', 'add', '-'], input=subprocess.PIPE, check=True)
+                
+                # Add MongoDB repository
+                subprocess.run(['echo', 'deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu focal/mongodb-org/7.0 multiverse'], 
+                             capture_output=True, check=True)
+                
+                # Install MongoDB
+                subprocess.run(['sudo', 'apt', 'update'], check=True)
+                subprocess.run(['sudo', 'apt', 'install', '-y', 'mongodb-org'], check=True)
+                
+                # Start MongoDB service
+                subprocess.run(['sudo', 'systemctl', 'start', 'mongod'], check=True)
+                subprocess.run(['sudo', 'systemctl', 'enable', 'mongod'], check=True)
+                
+                print("✅ MongoDB installed and started successfully via APT")
+                return True
+            except subprocess.CalledProcessError as e:
+                print(f"❌ Failed to install MongoDB via APT: {e}")
+        
+        elif 'dnf' in package_managers:
+            print("📦 Installing MongoDB via DNF...")
+            try:
+                subprocess.run(['sudo', 'dnf', 'install', '-y', 'mongodb-org'], check=True)
+                subprocess.run(['sudo', 'systemctl', 'start', 'mongod'], check=True)
+                subprocess.run(['sudo', 'systemctl', 'enable', 'mongod'], check=True)
+                print("✅ MongoDB installed and started successfully via DNF")
+                return True
+            except subprocess.CalledProcessError as e:
+                print(f"❌ Failed to install MongoDB via DNF: {e}")
+        
+        elif 'pacman' in package_managers:
+            print("📦 Installing MongoDB via Pacman...")
+            try:
+                subprocess.run(['sudo', 'pacman', '-S', '--noconfirm', 'mongodb'], check=True)
+                subprocess.run(['sudo', 'systemctl', 'start', 'mongodb'], check=True)
+                subprocess.run(['sudo', 'systemctl', 'enable', 'mongodb'], check=True)
+                print("✅ MongoDB installed and started successfully via Pacman")
+                return True
+            except subprocess.CalledProcessError as e:
+                print(f"❌ Failed to install MongoDB via Pacman: {e}")
+    
+    # Windows installation
+    elif system == 'windows':
+        if 'choco' in package_managers:
+            print("📦 Installing MongoDB via Chocolatey...")
+            try:
+                subprocess.run(['choco', 'install', 'mongodb', '-y'], check=True)
+                print("✅ MongoDB installed successfully via Chocolatey")
+                print("🔧 Please start MongoDB service manually from Services panel")
+                return True
+            except subprocess.CalledProcessError as e:
+                print(f"❌ Failed to install MongoDB via Chocolatey: {e}")
+        
+        elif 'winget' in package_managers:
+            print("📦 Installing MongoDB via Winget...")
+            try:
+                subprocess.run(['winget', 'install', 'MongoDB.Server'], check=True)
+                print("✅ MongoDB installed successfully via Winget")
+                print("🔧 Please start MongoDB service manually from Services panel")
+                return True
+            except subprocess.CalledProcessError as e:
+                print(f"❌ Failed to install MongoDB via Winget: {e}")
+    
+    # If automatic installation fails, provide manual instructions
+    print("❌ Automatic MongoDB installation failed or not supported on this system")
+    print_manual_mongodb_instructions(system)
+    return False
+
+def print_manual_mongodb_instructions(system):
+    """Print manual installation instructions for MongoDB"""
+    print("\n📋 Manual MongoDB Installation Instructions:")
+    print("   • Visit: https://www.mongodb.com/try/download/community")
+    print("   • Download MongoDB Community Server for your operating system")
+    print("   • Follow the installation instructions")
+    print("   • Start MongoDB service")
+    
+    if system == 'macos':
+        print("\n🍺 macOS Options:")
+        print("   • Homebrew: brew tap mongodb/brew && brew install mongodb-community")
+        print("   • Start service: brew services start mongodb-community")
+        print("   • Official installer: https://www.mongodb.com/try/download/community")
+    elif system == 'linux':
+        print("\n🐧 Linux Options:")
+        print("   • Ubuntu/Debian: Follow MongoDB official installation guide")
+        print("   • RHEL/CentOS/Fedora: sudo dnf install mongodb-org")
+        print("   • Arch Linux: sudo pacman -S mongodb")
+        print("   • Start service: sudo systemctl start mongod")
+        print("   • Enable service: sudo systemctl enable mongod")
+        print("   • Official guide: https://docs.mongodb.com/manual/installation/")
+    elif system == 'windows':
+        print("\n🪟 Windows Options:")
+        print("   • Official installer: https://www.mongodb.com/try/download/community")
+        print("   • Chocolatey: choco install mongodb")
+        print("   • Start service from Services panel or run: net start MongoDB")
+    
+    print("\n🔍 Verify Installation:")
+    print("   • Test connection: mongosh --eval \"db.runCommand('ping')\"")
+    print("   • Check service status (Linux/macOS): sudo systemctl status mongod")
+
 def check_python_requirements():
     """Check if Python requirements are installed"""
     requirements_file = 'requirements.txt'
@@ -277,7 +434,7 @@ def install_react_dependencies(react_dashboard_dir):
 
 def setup_system_dependencies(react_dashboard_dir, interactive=True):
     """
-    Complete system setup including Python and Node.js dependencies
+    Complete system setup including Python, Node.js, and MongoDB dependencies
     
     Args:
         react_dashboard_dir: Path to React dashboard directory
@@ -289,7 +446,8 @@ def setup_system_dependencies(react_dashboard_dir, interactive=True):
     setup_status = {
         'python_requirements': False,
         'nodejs': False,
-        'react_dependencies': False
+        'react_dependencies': False,
+        'mongodb': False
     }
     
     print("🔧 Checking system dependencies...")
@@ -310,6 +468,32 @@ def setup_system_dependencies(react_dashboard_dir, interactive=True):
             setup_status['python_requirements'] = install_python_requirements()
     else:
         setup_status['python_requirements'] = True
+    
+    # Check and install MongoDB
+    if not check_mongodb_installed():
+        if interactive:
+            try:
+                response = input("🍃 Install MongoDB automatically? (y/n): ").lower().strip()
+                if response in ['y', 'yes']:
+                    if install_mongodb():
+                        print("🔄 Verifying MongoDB installation...")
+                        # Give MongoDB a moment to start
+                        import time
+                        time.sleep(3)
+                        setup_status['mongodb'] = check_mongodb_installed()
+                    else:
+                        print("❌ MongoDB installation failed")
+                else:
+                    print("⏭️  Skipping MongoDB installation")
+            except KeyboardInterrupt:
+                print("\n⏭️  Skipping MongoDB installation")
+        else:
+            if install_mongodb():
+                import time
+                time.sleep(3)
+                setup_status['mongodb'] = check_mongodb_installed()
+    else:
+        setup_status['mongodb'] = True
     
     # Check and install Node.js
     if not check_node_installed():
@@ -340,6 +524,7 @@ def setup_system_dependencies(react_dashboard_dir, interactive=True):
     print("\n" + "=" * 50)
     print("📊 Setup Summary:")
     print(f"├── Python Requirements: {'✅ Ready' if setup_status['python_requirements'] else '❌ Missing'}")
+    print(f"├── MongoDB: {'✅ Ready' if setup_status['mongodb'] else '❌ Missing'}")
     print(f"├── Node.js: {'✅ Ready' if setup_status['nodejs'] else '❌ Missing'}")
     print(f"└── React Dependencies: {'✅ Ready' if setup_status['react_dependencies'] else '❌ Missing'}")
     

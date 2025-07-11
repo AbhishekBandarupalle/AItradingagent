@@ -1,15 +1,21 @@
-import requests
-import time
+# Standard library imports
 import json
-from datetime import datetime, timedelta
-import matplotlib.pyplot as plt
 import logging
-from logging.handlers import TimedRotatingFileHandler
 import os
 import re
-import yfinance as yf
 import subprocess
 import sys
+import time
+from datetime import datetime, timedelta
+from logging.handlers import TimedRotatingFileHandler
+
+# Third-party imports
+import matplotlib.pyplot as plt
+import requests
+import yfinance as yf
+
+# Local imports
+# Add project root to Python path if needed
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from utils import MCPClient, clean_llm_json, FinBertSentiment
 
@@ -38,11 +44,18 @@ class SmartM1TradingAgent:
         self.last_rebalance = datetime.min
         self.trade_log = []
         self.mcp = MCPClient(llm_url)
-        self.transaction_id = self._get_last_transaction_id()
-        self.holdings = self._get_last_holdings()
-        self.cash = self._get_last_cash()
         self.newsapi_key = newsapi_key
         self.finbert = FinBertSentiment()
+        
+        # Get current transaction ID first (needed for auto-initialization)
+        self.transaction_id = self._get_last_transaction_id()
+        
+        # Auto-initialize if needed
+        self._auto_initialize_if_needed()
+        
+        # Get current state after potential initialization
+        self.holdings = self._get_last_holdings()
+        self.cash = self._get_last_cash()
 
     def _get_last_transaction_id(self):
         # Get the last transaction ID from the database via MCP
@@ -87,16 +100,23 @@ class SmartM1TradingAgent:
             "You are a financial strategist. List 20 promising stocks and 5 promising cryptos "
             "to consider for short-term aggressive trading, based on market momentum and trends. "
             "Respond ONLY with a valid JSON object of the form: {\"stocks\": [\"TSLA\", ...], \"cryptos\": [\"BTC-USD\", ...]}. "
-            "Do not include any explanation or extra text."
+            "Do not include any explanation or extra text. Use curly braces, double quotes for keys and values, and valid JSON syntax only."
         )
         symbol_response = self.query_llm(symbol_prompt)
         logging.info(f"LLM symbol response: {symbol_response}")
         try:
             cleaned = clean_llm_json(symbol_response)
             if not cleaned:
-                logging.error(f"Raw LLM response (symbol list parse failure): {symbol_response}")
-                raise ValueError("No JSON object found in LLM symbol response")
-            symbol_obj = json.loads(cleaned)
+                # Try to fix common LLM mistakes
+                fixed = self.try_fix_llm_response(symbol_response)
+                try:
+                    symbol_obj = json.loads(fixed)
+                except Exception:
+                    logging.error(f"Failed to parse LLM response even after fix: {symbol_response}")
+                    self.portfolio = {}
+                    return
+            else:
+                symbol_obj = json.loads(cleaned)
             stock_list = symbol_obj.get("stocks", [])
             crypto_list = symbol_obj.get("cryptos", [])
             if not isinstance(stock_list, list) or not isinstance(crypto_list, list):
@@ -107,7 +127,7 @@ class SmartM1TradingAgent:
             self.portfolio = {}
             return
 
-        # Step 2: Build news digest and filter by sentiment
+        # Step 2: Build news digest and filter by sentiment (more lenient threshold)
         news_digest = ""
         filtered_stocks = []
         filtered_cryptos = []
@@ -115,15 +135,24 @@ class SmartM1TradingAgent:
         for symbol in stock_list:
             headlines, score = self.fetch_news_sentiment(symbol)
             sentiment_map[symbol] = score
-            if score >= 1.0:
+            # More lenient sentiment threshold (0.5 instead of 0.8)
+            if score >= 0.5:
                 filtered_stocks.append(symbol)
                 news_digest += f"\n[{symbol}] Sentiment Score: {score:.2f}\n" + "\n".join(f"- {h}" for h in headlines) + "\n"
+            else:
+                logging.info(f"Filtered out {symbol} due to low sentiment: {score:.2f}")
         for symbol in crypto_list:
             headlines, score = self.fetch_news_sentiment(symbol)
             sentiment_map[symbol] = score
-            if score >= 1.0:
+            # More lenient sentiment threshold (0.5 instead of 0.8)
+            if score >= 0.5:
                 filtered_cryptos.append(symbol)
                 news_digest += f"\n[{symbol}] Sentiment Score: {score:.2f}\n" + "\n".join(f"- {h}" for h in headlines) + "\n"
+            else:
+                logging.info(f"Filtered out {symbol} due to low sentiment: {score:.2f}")
+        
+        logging.info(f"Filtered stocks: {filtered_stocks}")
+        logging.info(f"Filtered cryptos: {filtered_cryptos}")
         logging.info(f"News Digest for LLM allocation:\n{news_digest}")
 
         # Step 3: Ask LLM for allocations using the news context (filtered symbols only)
@@ -172,6 +201,23 @@ class SmartM1TradingAgent:
             logging.error(f"Error parsing LLM output: {e}")
             self.portfolio = {}
 
+    @staticmethod
+    def try_fix_llm_response(raw):
+        import re
+        s = raw.strip()
+        # Try to convert ["DOGE-USD": 0.4, ...] to {"DOGE-USD": 0.4, ...}
+        if s.startswith('[') and ':' in s:
+            fixed = '{' + s[1:-1] + '}'
+            fixed = re.sub(r'([a-zA-Z0-9_-]+):', r'"\1":', fixed)  # Add quotes to keys
+            fixed = fixed.replace("'", '"')  # Replace single quotes with double quotes
+            return fixed
+        # Try to convert Python dict style to JSON
+        if s.startswith('{') and ':' in s:
+            fixed = re.sub(r'([a-zA-Z0-9_-]+):', r'"\1":', s)
+            fixed = fixed.replace("'", '"')
+            return fixed
+        return s
+
     def _get_last_holdings(self):
         # Get last holdings from the database via MCP
         result = self.mcp.get_current_holdings()
@@ -188,10 +234,35 @@ class SmartM1TradingAgent:
         # Get last cash from the database via MCP
         result = self.mcp.get_current_holdings()
         if result['success']:
-            return result['cash']
+            cash = result['cash']
+            return cash
         else:
             logging.error(f"Error getting cash: {result['error']}")
-            return self.max_investment
+            return 0
+
+    def _auto_initialize_if_needed(self):
+        """Automatically initialize the trading system if it hasn't been initialized yet."""
+        try:
+            # Check if system is already initialized
+            result = self.mcp.get_current_holdings()
+            if result['success']:
+                cash = result.get('cash', 0)
+                holdings = result.get('holdings', {})
+                
+                # System is initialized if cash > 0 or there are holdings
+                if cash > 0 or len(holdings) > 0:
+                    logging.info("Trading system already initialized")
+                    return
+                else:
+                    # System needs initialization
+                    logging.info(f"First-time run detected! Initializing trading system with ${self.max_investment} starting cash")
+                    self.initialize_trading_system()
+            else:
+                logging.warning(f"Could not check initialization status: {result.get('error', 'Unknown error')}")
+                
+        except Exception as e:
+            logging.warning(f"Could not check initialization status: {e}")
+            # Don't fail the agent startup if initialization check fails
 
     def simulate_orders(self):
         logging.info("Simulating orders with buy/sell logic...")
@@ -204,7 +275,7 @@ class SmartM1TradingAgent:
         prev_holdings = self.holdings.copy()
         prev_cash = self.cash
         # Fetch prices for all symbols in union of old and new allocations
-        all_symbols = set(prev_holdings.keys()).union(self.portfolio.keys())
+        all_symbols = set(prev_holdings.keys()).union(set(self.portfolio.keys()))
         prices = {}
         for symbol in all_symbols:
             try:
@@ -319,6 +390,40 @@ class SmartM1TradingAgent:
             else:
                 logging.error(f"Error saving trades: {result['error']}")
 
+    def initialize_trading_system(self):
+        """Initialize the trading system with starting cash and clear previous trades."""
+        logging.info(f"Initializing trading system with ${self.max_investment} starting cash")
+        
+        # Create initial trade record with starting cash
+        now = datetime.now()
+        transaction_id = self._get_next_transaction_id()
+        initial_trade = {
+            "transaction_id": transaction_id,
+            "time": now.strftime("%H:%M:%S"),
+            "date": now.strftime("%d-%m-%y"),
+            "symbol": "CASH_INIT",
+            "action": "Initialize",
+            "shares_changed": 0,
+            "shares_held": 0,
+            "current_price": 1.0,
+            "amount": self.max_investment,
+            "allocation": 0,
+            "cash": self.max_investment,
+            "final_cash": self.max_investment,
+            "portfolio_value": self.max_investment,
+            "sentiment": 1.0,
+            "last_sentiment": 1.0
+        }
+        
+        # Save to database
+        result = self.mcp.save_trades([initial_trade])
+        if result['success']:
+            logging.info("Trading system initialized successfully")
+            self.cash = self.max_investment
+            self.holdings = {}
+        else:
+            logging.error(f"Failed to initialize trading system: {result['error']}")
+    
     def should_rebalance(self):
         return (datetime.now() - self.last_rebalance) >= timedelta(days=1)
 

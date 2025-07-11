@@ -1,8 +1,13 @@
+# Standard library imports
+import os
+import sys
 import unittest
 from unittest.mock import patch, MagicMock
-import sys
-import os
+
+# Add the project root to the path
 sys.path.insert(0, os.path.abspath('..'))
+
+# Local imports
 from utils import MCPClient
 
 class TestMCPClient(unittest.TestCase):

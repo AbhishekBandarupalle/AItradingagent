@@ -9,7 +9,9 @@ import json
 from utils import (
     setup_system_dependencies,
     check_node_installed,
-    check_python_requirements
+    check_python_requirements,
+    check_mongodb_installed,
+    cleanup_trading_database
 )
 
 # Paths to scripts
@@ -34,6 +36,16 @@ PROCESS_NAMES = [
     'node',  # For React dashboard processes
     'npm'    # For npm processes
 ]
+
+def cleanup_database_on_stop():
+    """Clean up database when AI trading system is stopped."""
+    try:
+        print("🧹 Cleaning up database...")
+        cleanup_trading_database()
+        
+    except Exception as e:
+        print(f"⚠️  Database cleanup failed: {e}")
+        # Don't stop the process if database cleanup fails
 
 def start_all():
     """Start all AI trading system services"""
@@ -68,6 +80,9 @@ def start_all():
     
     print("\n🔧 Starting Core Services...")
     print("=" * 50)
+    
+    # Trading agent will auto-initialize if needed
+    print("🔍 Trading agent will auto-initialize if needed...")
     
     # Start core Python services
     procs = [
@@ -130,6 +145,7 @@ def start_all():
     
     print("\n💡 Tips:")
     print("   • Use 'python aitrading.py stop' to stop all services")
+    print("   • Use 'python aitrading.py restart' to restart all services")
     print("   • Use 'python aitrading.py status' to check service status")
     print("   • Check log files for detailed information")
     if setup_status['nodejs'] and setup_status['react_dependencies']:
@@ -185,6 +201,9 @@ def stop_all():
             print(f"   • {process}")
     
     print("\n🧹 Cleaning up...")
+    
+    # Clean up database when stopping the system
+    cleanup_database_on_stop()
     
     # Clean up log files
     if os.path.exists(LOG_DIR):
@@ -246,24 +265,31 @@ def status():
     # Check system dependencies
     print(f"\n🔧 System Dependencies:")
     python_ok = check_python_requirements()
+    mongodb_ok = check_mongodb_installed()
     nodejs_ok = check_node_installed()
     react_deps_ok = os.path.exists(os.path.join(REACT_DASHBOARD_DIR, 'node_modules'))
     
     print(f"   • Python Requirements: {'✅ Ready' if python_ok else '❌ Missing'}")
+    print(f"   • MongoDB: {'✅ Ready' if mongodb_ok else '❌ Missing'}")
     print(f"   • Node.js: {'✅ Ready' if nodejs_ok else '❌ Missing'}")
     print(f"   • React Dependencies: {'✅ Ready' if react_deps_ok else '❌ Missing'}")
     
-    # Check if React dashboard is available
-    print(f"\n🌐 Available Dashboard:")
-    if nodejs_ok and react_deps_ok:
-        print(f"   • Trading Dashboard: http://localhost:3000")
-    else:
-        print(f"   • Trading Dashboard: Not available")
-        if not nodejs_ok:
-            print(f"     - Node.js required")
-        if not react_deps_ok:
-            print(f"     - React dependencies need installation")
-        print(f"     Run 'python aitrading.py start' to set up dependencies")
+    # Only show dashboard availability if services are running
+    if running_services:
+        dashboard_running = any("React" in service for service, _, _ in running_services)
+        print(f"\n🌐 Available Dashboard:")
+        if dashboard_running and nodejs_ok and react_deps_ok:
+            print(f"   • Trading Dashboard: http://localhost:3000")
+        elif nodejs_ok and react_deps_ok:
+            print(f"   • Trading Dashboard: Dependencies ready (not running)")
+            print(f"     Run 'python aitrading.py start' to launch")
+        else:
+            print(f"   • Trading Dashboard: Not available")
+            if not nodejs_ok:
+                print(f"     - Node.js required")
+            if not react_deps_ok:
+                print(f"     - React dependencies need installation")
+            print(f"     Run 'python aitrading.py start' to set up and launch")
 
 def setup():
     """Setup system dependencies without starting services"""
@@ -283,26 +309,51 @@ def setup():
         print("⚠️  Some dependencies are missing:")
         if not setup_status['python_requirements']:
             print("   • Python requirements: Run 'pip install -r requirements.txt'")
+        if not setup_status['mongodb']:
+            print("   • MongoDB: Visit https://www.mongodb.com/try/download/community for installation")
         if not setup_status['nodejs']:
             print("   • Node.js: Visit https://nodejs.org/ for installation")
         if not setup_status['react_dependencies']:
             print("   • React dependencies: Run 'npm install' in services/trading-dashboard/")
 
+def restart_all():
+    """Restart all AI trading system services"""
+    print("🔄 Restarting AI Trading System...")
+    print("=" * 50)
+    
+    # First stop all services
+    print("🛑 Stopping all services...")
+    stop_all()
+    
+    # Wait a moment for processes to fully terminate
+    time.sleep(2)
+    
+    # Optionally initialize the trading system (uncomment if needed)
+    # print("\n🔧 Initializing trading system...")
+    # subprocess.run(['python3', 'initialize_trading_system.py'], check=True)
+    
+    # Then start all services
+    print("\n🚀 Starting all services...")
+    start_all()
+
 def main():
     """Main entry point"""
-    if len(sys.argv) != 2 or sys.argv[1] not in ('start', 'stop', 'status', 'setup'):
-        print("Usage: python aitrading.py [start|stop|status|setup]")
+    if len(sys.argv) != 2 or sys.argv[1] not in ('start', 'stop', 'status', 'setup', 'restart'):
+        print("Usage: python aitrading.py [start|stop|status|setup|restart]")
         print("\nCommands:")
-        print("  start  - Start all AI trading services")
-        print("  stop   - Stop all AI trading services") 
-        print("  status - Check status of all services")
-        print("  setup  - Setup system dependencies only")
+        print("  start   - Start all AI trading services")
+        print("  stop    - Stop all AI trading services") 
+        print("  restart - Restart all AI trading services")
+        print("  status  - Check status of all services")
+        print("  setup   - Setup system dependencies only")
         sys.exit(1)
         
     if sys.argv[1] == 'start':
         start_all()
     elif sys.argv[1] == 'stop':
         stop_all()
+    elif sys.argv[1] == 'restart':
+        restart_all()
     elif sys.argv[1] == 'status':
         status()
     elif sys.argv[1] == 'setup':

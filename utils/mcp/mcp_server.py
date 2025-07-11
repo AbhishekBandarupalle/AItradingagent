@@ -1,14 +1,21 @@
-import sys
-import os
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from flask import Flask, request, jsonify, render_template_string
-import requests
-import logging
-import json
+# Standard library imports
 import csv
+import json
+import logging
+import os
 import re
+import sys
 from collections import defaultdict
+
+# Third-party imports
+import requests
+from flask import Flask, request, jsonify, render_template_string
+
+# Local imports
+# Add project root to Python path (two levels up from utils/mcp/mcp_server.py)
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 from utils import TradeDatabase
+from utils.llm_response_utils import extract_json_from_streaming_response, validate_and_parse_json
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -61,7 +68,7 @@ def mcp():
         return jsonify({'result': 'trades marked as verified'}), 200
 
     else:
-        # Forward to Ollama
+        # Forward to Ollama with improved response processing
         payload = {
             'model': OLLAMA_MODEL,
             'prompt': prompt
@@ -69,26 +76,46 @@ def mcp():
         try:
             resp = requests.post(OLLAMA_URL, json=payload, timeout=60)
             resp.raise_for_status()
-            # Concatenate all 'response' fields from the streamed JSON lines
-            response_text = ""
+            
+            # Use improved response processing
             lines = resp.text.strip().splitlines()
-            for line in lines:
-                try:
-                    obj = json.loads(line)
-                    if 'response' in obj:
-                        response_text += obj['response']
-                except Exception:
-                    continue
-            # Now try to extract JSON from the concatenated response_text
-            match = re.search(r'\{.*\}', response_text, re.DOTALL)
-            if match:
-                llm_result = match.group(0)
-                return jsonify({'result': llm_result})
+            
+            # Debug: Log first few lines to understand the format
+            logging.info(f"Response lines count: {len(lines)}")
+            logging.info(f"First 3 lines: {lines[:3]}")
+            logging.info(f"Last 3 lines: {lines[-3:]}")
+            
+            response_text, json_result = extract_json_from_streaming_response(lines)
+            
+            logging.info(f"Full LLM response: {response_text}")
+            logging.info(f"Extracted JSON result: {json_result}")
+            
+            if json_result:
+                # Validate the JSON one more time
+                parsed_json = validate_and_parse_json(json_result)
+                if parsed_json:
+                    logging.info(f"Extracted and validated JSON: {json_result}")
+                    return jsonify({'result': json_result})
+                else:
+                    logging.error(f"Invalid JSON extracted: {json_result}")
+                    return jsonify({'result': 'llm error: invalid json'}), 500
             else:
-                return jsonify({'result': 'llm error'}), 500
-        except Exception as e:
+                logging.error(f"No JSON found in LLM response: {response_text}")
+                # As a final fallback, try to extract JSON directly from the raw response
+                from utils.llm_response_utils import clean_llm_json
+                fallback_json = clean_llm_json(resp.text)
+                if fallback_json:
+                    logging.info(f"Fallback JSON extraction succeeded: {fallback_json}")
+                    return jsonify({'result': fallback_json})
+                # Return the raw response as fallback
+                return jsonify({'result': response_text or 'llm error: no response'}), 500
+                
+        except requests.exceptions.RequestException as e:
             logging.error(f"Ollama request failed: {e}")
-            return jsonify({'result': 'llm error'}), 500
+            return jsonify({'result': f'llm error: {str(e)}'}), 500
+        except Exception as e:
+            logging.error(f"Unexpected error in LLM processing: {e}")
+            return jsonify({'result': f'llm error: {str(e)}'}), 500
 
 # New database endpoints
 @app.route('/api/trades', methods=['POST'])
@@ -104,9 +131,9 @@ def get_trades():
     """Get all trades from the database."""
     limit = request.args.get('limit', type=int)
     if limit:
-        result = db.get_latest_trades(limit)
+        result = db.get_trades(limit)
     else:
-        result = db.get_all_trades()
+        result = db.get_trades()
     return jsonify(result)
 
 @app.route('/api/trades/latest', methods=['GET'])
@@ -129,7 +156,7 @@ def get_last_transaction_id():
 
 @app.route('/trades', methods=['GET'])
 def view_trades():
-    result = db.get_all_trades()
+    result = db.get_trades()
     if not result['success']:
         return f"Error loading trades: {result['error']}", 500
     
