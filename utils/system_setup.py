@@ -201,10 +201,22 @@ def check_python_requirements():
         
         # Check each requirement
         missing_packages = []
+        # Map package names to their import names when they differ
+        import_name_map = {
+            'python-dotenv': 'dotenv',
+            'pillow': 'PIL',
+            'beautifulsoup4': 'bs4',
+            'scikit-learn': 'sklearn',
+            'opencv-python': 'cv2',
+            'pyopenssl': 'OpenSSL'
+        }
+        
         for requirement in requirements:
-            package_name = requirement.split('==')[0].split('>=')[0].split('<=')[0].split('>')[0].split('<')[0]
+            package_name = requirement.split('==')[0].split('>=')[0].split('<=')[0].split('>')[0].split('<')[0].strip()
+            # Get the actual import name
+            import_name = import_name_map.get(package_name, package_name.replace('-', '_'))
             try:
-                __import__(package_name.replace('-', '_'))
+                __import__(import_name)
             except ImportError:
                 missing_packages.append(requirement)
         
