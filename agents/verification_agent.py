@@ -8,14 +8,13 @@ from datetime import datetime
 from collections import defaultdict
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from utils.mcp_client import MCPClient
-# Remove: from utils.trade_log_utils import load_trade_log, save_trade_log
 
 log_dir = 'logging'
 os.makedirs(log_dir, exist_ok=True)
 
 class TradeVerificationAgent:
     """Agent that fetches trades from MCP and sends a summary email via Gmail SMTP."""
-    def __init__(self, mcp_url="http://localhost:11534/mcp", email_to=None):
+    def __init__(self, mcp_url="http://localhost:11534", email_to=None):
         """Initialize the agent with MCP URL and email configuration from environment variables."""
         self.mcp = MCPClient(mcp_url)
         self.email_to = email_to or os.environ.get("EMAIL_TO", "test@gmail.com")
@@ -25,18 +24,21 @@ class TradeVerificationAgent:
         self.email_pass = os.environ.get("EMAIL_PASS", "your_app_password")  # Use an app password if 2FA is enabled
 
     def fetch_trades(self):
-        # Query MCP for latest trades
-        result = self.mcp.send("GET_LATEST_TRADES")
-        try:
-            trades = json.loads(result)
-        except Exception:
-            trades = []
+        # Get all trades from database via MCP
+        result = self.mcp.get_trades()
+        if not result['success']:
+            print(f"Error fetching trades: {result['error']}")
+            return []
+        
+        trades = result['trades']
         # Only return trades that are not verified
         unverified = [t for t in trades if not t.get('verified', False)]
         return unverified
 
     def mark_trades_verified(self, up_to_id=None):
         # Mark trades as verified via MCP
+        # TODO: Implement verification marking in database
+        # For now, use the legacy prompt-based approach
         if up_to_id:
             prompt = f"MARK_TRADES_VERIFIED:{up_to_id}"
         else:
@@ -57,18 +59,16 @@ class TradeVerificationAgent:
             # Assume all trades in batch have same time/date
             t_time = batch[0]['time']
             t_date = batch[0]['date']
-            total = sum(trade['amount'] for trade in batch)
+            # Use portfolio_value if available, otherwise sum amounts
+            total = batch[0].get('portfolio_value', sum(trade['amount'] for trade in batch))
             delta = f" (+{total - prev_total:.2f})" if prev_total is not None else ""
-            lines.append(f"Transaction {tid} at {t_time} on {t_date} | Total: ${total:.2f}{delta}")
+            lines.append(f"Transaction {tid} at {t_time} on {t_date} | Portfolio Value: ${total:.2f}{delta}")
             for trade in batch:
                 alloc_pct = f"{trade['allocation']*100:.1f}%"
                 price = trade['current_price'] if trade['current_price'] is not None else 'N/A'
-                if price != 'N/A' and price != 0:
-                    shares = trade['amount'] / price
-                    shares_str = f"{shares:.4f} shares"
-                else:
-                    shares_str = "N/A shares"
-                lines.append(f"  {trade['symbol']}: {alloc_pct} @ ${price} | Amount: ${trade['amount']:.2f} | {shares_str}")
+                shares_held = trade.get('shares_held', 0)
+                action = trade.get('action', 'N/A')
+                lines.append(f"  {trade['symbol']}: {action} | {alloc_pct} @ ${price} | Shares: {shares_held:.4f} | Amount: ${trade['amount']:.2f}")
             lines.append("")
             prev_total = total
         return "\n".join(lines)

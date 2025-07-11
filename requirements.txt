@@ -1,8 +1,9 @@
 requests
-matplotlib
 yfinance
+matplotlib
+python-dotenv
 dash
 plotly
-psutil
 transformers
 torch
+pymongo

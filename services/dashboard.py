@@ -9,19 +9,25 @@ from dash.dependencies import Input, Output
 from flask import Response
 import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from utils.trade_log_utils import load_trade_log
+from utils.mcp_client import MCPClient
 
-TRADE_LOG_JSON = os.environ.get('TRADE_LOG_JSON', 'trade_log.json')
+# Initialize MCP client
+mcp_client = MCPClient("http://localhost:11534")
 
 # Helper to load and process trades
 def load_trades():
-    log_data = load_trade_log()
-    trades = log_data.get('trades', [])
+    result = mcp_client.get_trades()
+    if not result['success']:
+        return pd.DataFrame()
+    
+    trades = result['trades']
     if not trades:
         return pd.DataFrame()
+    
     df = pd.DataFrame(trades)
     if df.empty:
         return df
+    
     # Group by transaction_id for portfolio value over time
     df['transaction_id'] = df['transaction_id'].astype(str)
     df['total'] = df.groupby('transaction_id')['amount'].transform('sum')
@@ -194,9 +200,13 @@ app.layout = html.Div([
 # Remove buy-sell-table from callback and layout
 @app.server.route('/transactions')
 def serve_transactions():
-    log_data = load_trade_log()
-    from flask import jsonify
-    return Response(json.dumps(log_data, indent=2), mimetype='application/json')
+    result = mcp_client.get_trades()
+    if result['success']:
+        trades_data = {"trades": result['trades']}
+        return Response(json.dumps(trades_data, indent=2), mimetype='application/json')
+    else:
+        error_data = {"error": result['error'], "trades": []}
+        return Response(json.dumps(error_data, indent=2), mimetype='application/json')
 
 @app.callback(
     [Output('portfolio-value', 'figure'),

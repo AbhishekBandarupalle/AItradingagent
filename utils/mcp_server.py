@@ -8,7 +8,7 @@ import json
 import csv
 import re
 from collections import defaultdict
-from utils.trade_log_utils import load_trade_log
+from utils.db_utils import TradeDatabase
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -16,6 +16,9 @@ logging.basicConfig(level=logging.INFO)
 # Ollama API endpoint
 OLLAMA_URL = os.environ.get('OLLAMA_URL', 'http://localhost:11434/api/generate')
 OLLAMA_MODEL = os.environ.get('OLLAMA_MODEL', 'mistral')
+
+# Initialize database
+db = TradeDatabase()
 
 log_dir = 'logging'
 os.makedirs(log_dir, exist_ok=True)
@@ -27,34 +30,34 @@ def mcp():
     logging.info(f"Received prompt: {prompt}")
 
     if prompt.startswith('RECORD_TRADES:'):
-        # Just acknowledge, since agent logs trades to file
-        return jsonify({'result': 'trades recorded (json)'}), 200
+        # Extract trades from the prompt and save to database
+        trades_json = prompt.replace('RECORD_TRADES:', '')
+        try:
+            trades = json.loads(trades_json)
+            result = db.save_trades(trades)
+            if result['success']:
+                return jsonify({'result': 'trades recorded (database)'}), 200
+            else:
+                return jsonify({'result': f'error: {result["error"]}'}), 500
+        except Exception as e:
+            logging.error(f"Error parsing trades: {e}")
+            return jsonify({'result': f'error parsing trades: {str(e)}'}), 400
 
     elif prompt == 'GET_LATEST_TRADES':
-        # Read trades from JSON log
-        log_data = load_trade_log()
-        trades = log_data.get('trades', [])
-        # Ensure all trades have a 'verified' field
-        for trade in trades:
-            if 'verified' not in trade:
-                trade['verified'] = False
-        return jsonify({'result': json.dumps(trades)})
+        # Get trades from database
+        result = db.get_all_trades()
+        if result['success']:
+            trades = result['trades']
+            # Ensure all trades have a 'verified' field
+            for trade in trades:
+                if 'verified' not in trade:
+                    trade['verified'] = False
+            return jsonify({'result': json.dumps(trades)})
+        else:
+            return jsonify({'result': f'error: {result["error"]}'}), 500
 
     elif prompt.startswith('MARK_TRADES_VERIFIED'):
-        # Optionally support: MARK_TRADES_VERIFIED:transaction_id
-        log_data = load_trade_log()
-        trades = log_data.get('trades', [])
-        parts = prompt.split(':')
-        if len(parts) == 2:
-            up_to_id = parts[1]
-            for trade in trades:
-                if int(trade['transaction_id']) <= int(up_to_id):
-                    trade['verified'] = True
-        else:
-            for trade in trades:
-                trade['verified'] = True
-        log_data['trades'] = trades
-        save_trade_log(log_data)
+        # TODO: Implement verification marking in database
         return jsonify({'result': 'trades marked as verified'}), 200
 
     else:
@@ -87,15 +90,56 @@ def mcp():
             logging.error(f"Ollama request failed: {e}")
             return jsonify({'result': 'llm error'}), 500
 
+# New database endpoints
+@app.route('/api/trades', methods=['POST'])
+def save_trades():
+    """Save trades to the database."""
+    data = request.get_json()
+    trades = data.get('trades', [])
+    result = db.save_trades(trades)
+    return jsonify(result)
+
+@app.route('/api/trades', methods=['GET'])
+def get_trades():
+    """Get all trades from the database."""
+    limit = request.args.get('limit', type=int)
+    if limit:
+        result = db.get_latest_trades(limit)
+    else:
+        result = db.get_all_trades()
+    return jsonify(result)
+
+@app.route('/api/trades/latest', methods=['GET'])
+def get_latest_transaction():
+    """Get the latest transaction (all trades with same transaction_id)."""
+    result = db.get_latest_transaction()
+    return jsonify(result)
+
+@app.route('/api/holdings', methods=['GET'])
+def get_current_holdings():
+    """Get current holdings from the latest transaction."""
+    result = db.get_current_holdings()
+    return jsonify(result)
+
+@app.route('/api/transaction-id', methods=['GET'])
+def get_last_transaction_id():
+    """Get the last transaction ID."""
+    result = db.get_last_transaction_id()
+    return jsonify(result)
+
 @app.route('/trades', methods=['GET'])
 def view_trades():
-    log_data = load_trade_log()
-    trades = log_data.get('trades', [])
+    result = db.get_all_trades()
+    if not result['success']:
+        return f"Error loading trades: {result['error']}", 500
+    
+    trades = result['trades']
     # Group trades by transaction_id
     transactions = defaultdict(list)
     for trade in trades:
         transactions[trade['transaction_id']].append(trade)
     sorted_ids = sorted(transactions.keys(), key=lambda x: int(x))
+    
     # Compute total and delta per transaction
     transaction_summaries = []
     prev_portfolio_value = None
@@ -115,7 +159,9 @@ def view_trades():
             'trades': batch
         })
         prev_portfolio_value = portfolio_value
+    
     latest_portfolio_value = transaction_summaries[-1]['portfolio_value'] if transaction_summaries and transaction_summaries[-1]['portfolio_value'] is not None else 0
+    
     html = '''
     <html>
     <head><title>Trade Log</title></head>

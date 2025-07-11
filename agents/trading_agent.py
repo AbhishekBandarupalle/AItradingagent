@@ -12,7 +12,6 @@ import subprocess
 import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from utils.mcp_client import MCPClient
-from utils.trade_log_utils import load_trade_log, save_trade_log
 from utils.llm_response_utils import clean_llm_json
 from utils.finbert_sentiment import FinBertSentiment
 
@@ -34,7 +33,7 @@ file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 
 class SmartM1TradingAgent:
-    def __init__(self, api_key=None, max_investment=10000, llm_url="http://localhost:11534/mcp", newsapi_key=None):
+    def __init__(self, api_key=None, max_investment=10000, llm_url="http://localhost:11534", newsapi_key=None):
         self.api_key = api_key  # Not used in simulation mode
         self.max_investment = max_investment
         self.portfolio = {}
@@ -48,13 +47,13 @@ class SmartM1TradingAgent:
         self.finbert = FinBertSentiment()
 
     def _get_last_transaction_id(self):
-        # Read the last transaction ID from the JSON log file
-        log_data = load_trade_log()
-        trades = log_data["trades"]
-        if trades:
-            last_id = trades[-1].get('transaction_id', '00000')
-            return int(last_id)
-        return 0
+        # Get the last transaction ID from the database via MCP
+        result = self.mcp.get_last_transaction_id()
+        if result['success']:
+            return result['transaction_id']
+        else:
+            logging.error(f"Error getting last transaction ID: {result['error']}")
+            return 0
 
     def _get_next_transaction_id(self):
         self.transaction_id += 1
@@ -176,26 +175,25 @@ class SmartM1TradingAgent:
             self.portfolio = {}
 
     def _get_last_holdings(self):
-        # Read last holdings from the JSON log file
-        holdings = {}
-        log_data = load_trade_log()
-        trades = log_data["trades"]
-        if trades:
-            last_tid = trades[-1]['transaction_id']
-            last_trades = [t for t in trades if t['transaction_id'] == last_tid]
-            for t in last_trades:
-                holdings[t['symbol']] = t.get('shares_held', 0)
-        return holdings
+        # Get last holdings from the database via MCP
+        result = self.mcp.get_current_holdings()
+        if result['success']:
+            holdings = {}
+            for symbol, data in result['holdings'].items():
+                holdings[symbol] = data['shares']
+            return holdings
+        else:
+            logging.error(f"Error getting holdings: {result['error']}")
+            return {}
 
     def _get_last_cash(self):
-        # Read last cash from the JSON log file
-        log_data = load_trade_log()
-        trades = log_data["trades"]
-        if trades:
-            last_tid = trades[-1]['transaction_id']
-            last_trades = [t for t in trades if t['transaction_id'] == last_tid]
-            return last_trades[0].get('cash', self.max_investment)
-        return self.max_investment
+        # Get last cash from the database via MCP
+        result = self.mcp.get_current_holdings()
+        if result['success']:
+            return result['cash']
+        else:
+            logging.error(f"Error getting cash: {result['error']}")
+            return self.max_investment
 
     def simulate_orders(self):
         logging.info("Simulating orders with buy/sell logic...")
@@ -308,19 +306,20 @@ class SmartM1TradingAgent:
 
     def publish_trades_to_mcp(self):
         if self.trade_log:
-            result = self.mcp.record_trades(self.trade_log)
-            logging.info(f"Posted trades to MCP: {result}")
+            result = self.mcp.save_trades(self.trade_log)
+            if result['success']:
+                logging.info(f"Saved {result['inserted_count']} trades to database")
+            else:
+                logging.error(f"Error saving trades: {result['error']}")
 
     def _log_trades_to_json(self, new_trades):
-        # Unified log structure: {"new_trade": true/false, "trades": [...]}
-        log_data = load_trade_log()
-        # Append new trades
-        log_data["trades"].extend(new_trades)
-        # Set new_trade flag if any buy/sell
-        if any(trade['action'] in ('Buy', 'Sell') for trade in new_trades):
-            log_data["new_trade"] = True
-        save_trade_log(log_data)
-        logging.info(f"Trade log saved to {os.environ.get('TRADE_LOG_JSON', 'trade_log.json')}")
+        # Save trades to database via MCP server
+        if new_trades:
+            result = self.mcp.save_trades(new_trades)
+            if result['success']:
+                logging.info(f"Saved {result['inserted_count']} trades to database")
+            else:
+                logging.error(f"Error saving trades: {result['error']}")
 
     def should_rebalance(self):
         return (datetime.now() - self.last_rebalance) >= timedelta(days=1)
@@ -359,5 +358,5 @@ class SmartM1TradingAgent:
 
 if __name__ == "__main__":
     api_key = "YOUR_M1_API_KEY"
-    agent = SmartM1TradingAgent(api_key, llm_url="http://localhost:11534/mcp",newsapi_key="af484810771a4d8692a2db9b4672288e")
+    agent = SmartM1TradingAgent(api_key, llm_url="http://localhost:11534", newsapi_key="af484810771a4d8692a2db9b4672288e")
     agent.run_continuous(simulate=True, interval_minutes=2)
