@@ -8,7 +8,7 @@ import time
 MCP_SERVER = os.path.join('utils', 'mcp_server.py')
 TRADING_AGENT = os.path.join('agents', 'trading_agent.py')
 VERIFICATION_AGENT = os.path.join('agents', 'verification_agent.py')
-DASHBOARD = os.path.join('services', 'dashboard.py')
+DASHBOARD = os.path.join('services', 'dashboard.js')
 LOG_DIR = 'logging'
 
 # Log files
@@ -47,7 +47,7 @@ def start_all():
     procs = [
         (['python3', MCP_SERVER], MCP_LOG),
         (['python3', TRADING_AGENT], TRADING_LOG),
-        (['python3', DASHBOARD], DASHBOARD_LOG),
+        (['node', DASHBOARD], DASHBOARD_LOG),
         (['python3', VERIFICATION_AGENT], VERIFICATION_LOG),
     ]
     for cmd, logfile in procs:

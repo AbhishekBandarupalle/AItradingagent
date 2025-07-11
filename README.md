@@ -44,7 +44,7 @@ flowchart TB
         end
         
         subgraph "Services Layer"
-            DASH["Dashboard<br/>dashboard.py<br/>Port 8050"]
+            DASH["Dashboard<br/>dashboard.js<br/>Port 8050"]
             EMAIL["Email Service<br/>SMTP"]
         end
         
