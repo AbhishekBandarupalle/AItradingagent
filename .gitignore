@@ -52,6 +52,7 @@ coverage.xml
 .ipynb_checkpoints
 
 # pyenv
+.venv/
 .python-version
 
 # mypy
@@ -73,6 +74,7 @@ examples/.env.example
 examples/.env
 
 # VS Code
+.cursor/
 .vscode/
 
 # Node.js / npm
