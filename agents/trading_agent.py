@@ -94,109 +94,130 @@ class SmartM1TradingAgent:
             logging.warning(f"Failed to fetch news for {symbol}: {e}")
             return ["Error fetching news"], 1.0
 
-    def generate_portfolio_with_llm(self):
-        # Step 1: Ask LLM for recommended stocks and cryptos
-        symbol_prompt = (
-            "You are a financial strategist. List 20 promising stocks and 5 promising cryptos "
-            "to consider for short-term aggressive trading, based on market momentum and trends. "
-            "Respond ONLY with a valid JSON object of the form: {\"stocks\": [\"TSLA\", ...], \"cryptos\": [\"BTC-USD\", ...]}. "
-            "Do not include any explanation or extra text. Use curly braces, double quotes for keys and values, and valid JSON syntax only."
+    def fetch_news_sentiment_batch(self, symbols):
+        """Fetch news and sentiment for a list of symbols using a single NewsAPI request."""
+        results = {}
+        if not self.newsapi_key:
+            return {s: (["No API key"], 1.0) for s in symbols}
+
+        query = " OR ".join(symbols)
+        url = (
+            f"https://newsapi.org/v2/everything?q={query}&sortBy=publishedAt&language=en&apiKey={self.newsapi_key}"
         )
-        symbol_response = self.query_llm(symbol_prompt)
-        logging.info(f"LLM symbol response: {symbol_response}")
+        try:
+            response = requests.get(url)
+            articles = response.json().get("articles", [])
+            symbol_map = {s: [] for s in symbols}
+            for a in articles:
+                title = a.get("title", "")
+                for s in symbols:
+                    if s.lower() in title.lower():
+                        symbol_map[s].append(title)
+
+            for s in symbols:
+                headlines = symbol_map[s][:5]
+                if headlines:
+                    avg = self.finbert.aggregate_score(headlines)
+                    score = avg["positive"] - avg["negative"]
+                    scaled = max(0.5, min(1.0 + score, 1.5))
+                    results[s] = (headlines, scaled)
+                else:
+                    results[s] = (["No headlines"], 1.0)
+        except Exception as e:
+            logging.warning(f"Failed batch news fetch: {e}")
+            results = {s: (["Error fetching news"], 1.0) for s in symbols}
+        return results
+
+    def get_fund_holdings(self, fund):
+        """Return a list of stock tickers held by the given fund."""
+        try:
+            ticker = yf.Ticker(fund)
+            if hasattr(ticker, "fund_holdings"):
+                df = ticker.fund_holdings
+                if hasattr(df, "symbol"):
+                    return list(df["symbol"])
+                return list(df.index)
+            info = getattr(ticker, "info", {})
+            return [h.get("symbol") for h in info.get("holdings", []) if h.get("symbol")]
+        except Exception as e:
+            logging.warning(f"Failed to get holdings for {fund}: {e}")
+            return []
+
+    def get_top_movers(self, funds):
+        """Return top 10 positive and top 10 negative movers from the given funds."""
+        all_stocks = set()
+        for f in funds:
+            all_stocks.update(self.get_fund_holdings(f))
+
+        movers = []
+        for s in all_stocks:
+            try:
+                hist = yf.Ticker(s).history(period="11d")
+                closes = hist["Close"]
+                if len(closes) < 2:
+                    continue
+                pct = (closes.iloc[-1] - closes.iloc[0]) / closes.iloc[0]
+                movers.append((s, pct))
+            except Exception as e:
+                logging.warning(f"Failed to fetch history for {s}: {e}")
+
+        movers.sort(key=lambda x: x[1], reverse=True)
+        top_positive = [s for s, _ in movers[:10]]
+        top_negative = [s for s, _ in sorted(movers, key=lambda x: x[1])[:10]]
+        return top_positive, top_negative
+
+    def generate_portfolio_with_llm(self):
+        """Generate a portfolio using LLM guidance combined with market data."""
+        # Step 1: Ask the LLM for index funds to analyze
+        prompt = (
+            "List major index funds or ETFs to analyze. "
+            "Respond ONLY with JSON like {\"funds\": [\"SPY\", \"QQQ\"]}."
+        )
+        symbol_response = self.query_llm(prompt)
+        logging.info(f"LLM fund response: {symbol_response}")
         try:
             cleaned = clean_llm_json(symbol_response)
-            if not cleaned:
-                # Try to fix common LLM mistakes
-                fixed = self.try_fix_llm_response(symbol_response)
-                try:
-                    symbol_obj = json.loads(fixed)
-                except Exception:
-                    logging.error(f"Failed to parse LLM response even after fix: {symbol_response}")
-                    self.portfolio = {}
-                    return
-            else:
-                symbol_obj = json.loads(cleaned)
-            stock_list = symbol_obj.get("stocks", [])
-            crypto_list = symbol_obj.get("cryptos", [])
-            if not isinstance(stock_list, list) or not isinstance(crypto_list, list):
-                raise ValueError("'stocks' or 'cryptos' key is not a list")
+            fund_obj = json.loads(cleaned) if cleaned else json.loads(self.try_fix_llm_response(symbol_response))
+            fund_list = fund_obj.get("funds", [])
         except Exception as e:
-            logging.error(f"Failed to parse symbol list from LLM: {e}")
-            logging.error(f"Raw LLM response (exception): {symbol_response}")
+            logging.error(f"Failed to parse fund list: {e}")
             self.portfolio = {}
             return
 
-        # Step 2: Build news digest and filter by sentiment (more lenient threshold)
+        # Step 2: Determine top movers from these index funds
+        pos, neg = self.get_top_movers(fund_list)
+        stock_list = pos + neg
+
+        # Step 3: Fetch news and sentiment in a single batch
+        news_data = self.fetch_news_sentiment_batch(stock_list)
         news_digest = ""
-        filtered_stocks = []
-        filtered_cryptos = []
         sentiment_map = {}
-        for symbol in stock_list:
-            headlines, score = self.fetch_news_sentiment(symbol)
-            sentiment_map[symbol] = score
-            # More lenient sentiment threshold (0.5 instead of 0.8)
-            if score >= 0.5:
-                filtered_stocks.append(symbol)
-                news_digest += f"\n[{symbol}] Sentiment Score: {score:.2f}\n" + "\n".join(f"- {h}" for h in headlines) + "\n"
-            else:
-                logging.info(f"Filtered out {symbol} due to low sentiment: {score:.2f}")
-        for symbol in crypto_list:
-            headlines, score = self.fetch_news_sentiment(symbol)
-            sentiment_map[symbol] = score
-            # More lenient sentiment threshold (0.5 instead of 0.8)
-            if score >= 0.5:
-                filtered_cryptos.append(symbol)
-                news_digest += f"\n[{symbol}] Sentiment Score: {score:.2f}\n" + "\n".join(f"- {h}" for h in headlines) + "\n"
-            else:
-                logging.info(f"Filtered out {symbol} due to low sentiment: {score:.2f}")
-        
-        logging.info(f"Filtered stocks: {filtered_stocks}")
-        logging.info(f"Filtered cryptos: {filtered_cryptos}")
+        for sym in stock_list:
+            headlines, score = news_data.get(sym, (["No headlines"], 1.0))
+            sentiment_map[sym] = score
+            news_digest += f"\n[{sym}] Sentiment Score: {score:.2f}\n" + "\n".join(f"- {h}" for h in headlines) + "\n"
+
         logging.info(f"News Digest for LLM allocation:\n{news_digest}")
 
-        # Step 3: Ask LLM for allocations using the news context (filtered symbols only)
+        # Step 4: Ask the LLM for allocation
         allocation_prompt = (
-            "You are an expert in financial markets: stocks, crypto, and options. "
-            "Your task is to aggressively optimize for short-term profitability. "
-            "Use the news headlines and sentiment scores provided to find high-momentum or undervalued opportunities. "
-            "Prioritize crypto that may explode, and stocks with bullish trends or major events. "
-            "Reply ONLY with a JSON object of allocation ratios (0 to 1 sum): "
-            "{\"TSLA\": 0.3, \"DOGE-USD\": 0.4, \"NVDA\": 0.3}.\n\n"
-            "News and sentiment context:\n"
+            "You are an expert portfolio manager. "
+            "Based on the following news sentiment and recent movers, provide allocation weights. "
+            "Respond ONLY with a JSON object where keys are tickers and values are decimals summing to 1.\n\n"
             f"{news_digest}"
         )
         result = self.query_llm(allocation_prompt)
-        logging.info(f"Raw LLM result: {result}")
+        logging.info(f"Raw LLM allocation result: {result}")
         try:
             cleaned = clean_llm_json(result)
-            if not cleaned:
-                raise ValueError("No JSON object found in LLM output")
             portfolio = json.loads(cleaned)
             if isinstance(portfolio, dict):
-                # Step 4: Enforce 80/20 allocation between stocks and cryptos
-                stock_syms = [s for s in filtered_stocks if s in portfolio]
-                crypto_syms = [s for s in filtered_cryptos if s in portfolio]
-                stock_alloc = sum(portfolio[s] for s in stock_syms)
-                crypto_alloc = sum(portfolio[s] for s in crypto_syms)
-                # Normalize allocations
-                total = stock_alloc + crypto_alloc
-                if total == 0:
-                    self.portfolio = {}
-                    logging.warning("No valid allocations after filtering.")
-                    return
-                # Scale to 80/20
-                for s in stock_syms:
-                    portfolio[s] = 0.8 * (portfolio[s] / stock_alloc) if stock_alloc > 0 else 0
-                for s in crypto_syms:
-                    portfolio[s] = 0.2 * (portfolio[s] / crypto_alloc) if crypto_alloc > 0 else 0
-                # Remove any not in filtered lists
-                self.portfolio = {s: portfolio[s] for s in stock_syms + crypto_syms}
-                logging.info(f"LLM generated portfolio (80/20): {self.portfolio}")
-                self.last_sentiment = getattr(self, 'last_sentiment', {})
+                self.portfolio = {s: portfolio.get(s, 0) for s in stock_list if s in portfolio}
                 self.current_sentiment = {s: sentiment_map[s] for s in self.portfolio}
+                logging.info(f"LLM generated portfolio: {self.portfolio}")
             else:
                 logging.warning("Invalid format returned from LLM.")
+                self.portfolio = {}
         except Exception as e:
             logging.error(f"Error parsing LLM output: {e}")
             self.portfolio = {}

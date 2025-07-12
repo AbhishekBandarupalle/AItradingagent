@@ -10,8 +10,24 @@ class TestTradeVerificationAgent(unittest.TestCase):
     def test_format_email_body(self, MockMCPClient):
         agent = TradeVerificationAgent()
         trades = [
-            {"symbol": "AAPL", "amount": 500, "time": "2024-06-01T12:00:00"},
-            {"symbol": "MSFT", "amount": 500, "time": "2024-06-01T12:00:00"}
+            {
+                "transaction_id": "1",
+                "symbol": "AAPL",
+                "amount": 500,
+                "allocation": 0.5,
+                "current_price": 100.0,
+                "time": "12:00:00",
+                "date": "2024-06-01",
+            },
+            {
+                "transaction_id": "1",
+                "symbol": "MSFT",
+                "amount": 500,
+                "allocation": 0.5,
+                "current_price": 200.0,
+                "time": "12:00:00",
+                "date": "2024-06-01",
+            },
         ]
         body = agent.format_email_body(trades)
         self.assertIn("AAPL", body)
