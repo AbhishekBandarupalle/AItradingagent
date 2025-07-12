@@ -2,15 +2,12 @@
 import json
 import logging
 import os
-import re
-import subprocess
 import sys
 import time
 from datetime import datetime, timedelta
 from logging.handlers import TimedRotatingFileHandler
 
 # Third-party imports
-import matplotlib.pyplot as plt
 import requests
 import yfinance as yf
 
@@ -473,5 +470,6 @@ class SmartM1TradingAgent:
 if __name__ == "__main__":
     api_key = "YOUR_M1_API_KEY"
     newsapi_key = os.environ.get('NEWSAPI_KEY')
+    print(f"News API key: {newsapi_key}")
     agent = SmartM1TradingAgent(api_key, llm_url="http://localhost:11534", newsapi_key=newsapi_key)
     agent.run_continuous(simulate=True, interval_minutes=10)

@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard';
 import Portfolio from './pages/Portfolio';
 import Trading from './pages/Trading';
 import { TradingProvider } from './context/TradingContext';
+import { ThemeProvider } from './context/ThemeContext';
 
 const AppContainer = styled.div`
   display: flex;
@@ -37,21 +38,23 @@ const ContentArea = styled.div`
 
 function App() {
   return (
-    <TradingProvider>
-      <AppContainer>
-        <Sidebar />
-        <MainContent>
-          <Header />
-          <ContentArea>
-            <Routes>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/portfolio" element={<Portfolio />} />
-              <Route path="/trading" element={<Trading />} />
-            </Routes>
-          </ContentArea>
-        </MainContent>
-      </AppContainer>
-    </TradingProvider>
+    <ThemeProvider>
+      <TradingProvider>
+        <AppContainer>
+          <Sidebar />
+          <MainContent>
+            <Header />
+            <ContentArea>
+              <Routes>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/portfolio" element={<Portfolio />} />
+                <Route path="/trading" element={<Trading />} />
+              </Routes>
+            </ContentArea>
+          </MainContent>
+        </AppContainer>
+      </TradingProvider>
+    </ThemeProvider>
   );
 }
 

@@ -2,6 +2,7 @@ import React from 'react';
 import styled from 'styled-components';
 import { RefreshCw, Bell, User, TrendingUp, TrendingDown } from 'lucide-react';
 import { useTradingContext } from '../context/TradingContext';
+import ThemeToggle from './ThemeToggle';
 
 const HeaderContainer = styled.header`
   display: flex;
@@ -210,6 +211,8 @@ function Header() {
       </PortfolioSummary>
       
       <HeaderActions>
+        <ThemeToggle />
+        
         <ActionButton 
           onClick={refreshAllData} 
           className={loading ? 'loading' : ''}

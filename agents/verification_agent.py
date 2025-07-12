@@ -115,4 +115,4 @@ class TradeVerificationAgent:
 if __name__ == "__main__":
     import time
     agent = TradeVerificationAgent()
-    agent.run_continuous(interval_minutes=2)
+    agent.run_continuous(interval_minutes=10)
