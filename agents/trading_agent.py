@@ -370,25 +370,28 @@ class SmartM1TradingAgent:
             trade['final_cash'] = cash
         self.cash = cash
         self.last_sentiment = getattr(self, 'current_sentiment', {})
-        self._log_trades_to_json(new_trades)
-        self.publish_trades_to_mcp()
+        # self._log_trades_to_json(new_trades)
+        self.publish_trades_to_mcp(new_trades)
 
-    def publish_trades_to_mcp(self):
-        if self.trade_log:
-            result = self.mcp.save_trades(self.trade_log)
-            if result['success']:
-                logging.info(f"Saved {result['inserted_count']} trades to database")
-            else:
-                logging.error(f"Error saving trades: {result['error']}")
+    def publish_trades_to_mcp(self, trades):
+        """Send the provided trades to the MCP server for persistence."""
+        if not trades:
+            return
 
-    def _log_trades_to_json(self, new_trades):
-        # Save trades to database via MCP server
-        if new_trades:
-            result = self.mcp.save_trades(new_trades)
-            if result['success']:
-                logging.info(f"Saved {result['inserted_count']} trades to database")
-            else:
-                logging.error(f"Error saving trades: {result['error']}")
+        result = self.mcp.save_trades(trades)
+        if result['success']:
+            logging.info(f"Saved {result['inserted_count']} trades to database")
+        else:
+            logging.error(f"Error saving trades: {result['error']}")
+
+    # def _log_trades_to_json(self, new_trades):
+    #     # Save trades to database via MCP server
+    #     if new_trades:
+    #         result = self.mcp.save_trades(new_trades)
+    #         if result['success']:
+    #             logging.info(f"Saved {result['inserted_count']} trades to database")
+    #         else:
+    #             logging.error(f"Error saving trades: {result['error']}")
 
     def initialize_trading_system(self):
         """Initialize the trading system with starting cash and clear previous trades."""
@@ -469,5 +472,6 @@ class SmartM1TradingAgent:
 
 if __name__ == "__main__":
     api_key = "YOUR_M1_API_KEY"
-    agent = SmartM1TradingAgent(api_key, llm_url="http://localhost:11534")
+    newsapi_key = os.environ.get('NEWSAPI_KEY')
+    agent = SmartM1TradingAgent(api_key, llm_url="http://localhost:11534", newsapi_key=newsapi_key)
     agent.run_continuous(simulate=True, interval_minutes=10)

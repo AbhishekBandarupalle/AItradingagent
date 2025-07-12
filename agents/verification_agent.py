@@ -1,14 +1,10 @@
 # Standard library imports
-import json
 import os
 import smtplib
 import sys
 from collections import defaultdict
 from datetime import datetime
 from email.message import EmailMessage
-
-# Third-party imports
-import requests
 
 # Local imports
 # Add project root to Python path if needed
