@@ -16,6 +16,7 @@ class TestMCPClient(unittest.TestCase):
         mock_response = MagicMock()
         mock_response.json.return_value = {'result': 'ok'}
         mock_response.raise_for_status.return_value = None
+        mock_response.status_code = 200
         mock_post.return_value = mock_response
         client = MCPClient('http://fake-url')
         result = client.send('PROMPT')
@@ -25,8 +26,8 @@ class TestMCPClient(unittest.TestCase):
     def test_send_failure(self, mock_post):
         mock_post.side_effect = Exception('fail')
         client = MCPClient('http://fake-url')
-        result = client.send('PROMPT')
-        self.assertEqual(result, '')
+        with self.assertRaises(Exception):
+            client.send('PROMPT')
 
 if __name__ == '__main__':
     unittest.main() 
