@@ -461,5 +461,5 @@ class SmartM1TradingAgent:
 
 if __name__ == "__main__":
     api_key = "YOUR_M1_API_KEY"
-    agent = SmartM1TradingAgent(api_key, llm_url="http://localhost:11534", newsapi_key="af484810771a4d8692a2db9b4672288e")
-    agent.run_continuous(simulate=True, interval_minutes=2)
+    agent = SmartM1TradingAgent(api_key, llm_url="http://localhost:11534")
+    agent.run_continuous(simulate=True, interval_minutes=10)
